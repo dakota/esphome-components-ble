@@ -14,14 +14,14 @@ void BleAdvSelect::control(const std::string &value) {
   this->rtc_.save(&hash_value);
 }
 
-void BleAdvSelect::sub_init() { 
-  App.register_select(this);
+void BleAdvSelect::sub_init() {
+  // Select entities now auto-register in ESPHome 2025.x
   this->rtc_ = global_preferences->make_preference< uint32_t >(this->get_object_id_hash());
   uint32_t restored;
   if (this->rtc_.load(&restored)) {
     for (auto & opt: this->traits.get_options()) {
       if(fnv1_hash(opt) == restored) {
-        this->state = opt;
+        this->publish_state(opt);
         return;
       }
     }
@@ -34,18 +34,27 @@ void BleAdvNumber::control(float value) {
 }
 
 void BleAdvNumber::sub_init() {
-  App.register_number(this);
+  // Number entities now auto-register in ESPHome 2025.x
   this->rtc_ = global_preferences->make_preference< float >(this->get_object_id_hash());
   float restored;
   if (this->rtc_.load(&restored)) {
-    this->state = restored;
+    this->publish_state(restored);
   }
 }
 
 void BleAdvController::set_encoding_and_variant(const std::string & encoding, const std::string & variant) {
-  this->select_encoding_.traits.set_options(this->handler_->get_ids(encoding));
+  // Store encoding options to keep strings alive (required for ESPHome 2025.x)
+  this->encoding_options_ = this->handler_->get_ids(encoding);
+
+  // Convert to FixedVector<const char*> for new set_options() API
+  esphome::FixedVector<const char*, 10> options;
+  for (const auto& opt : this->encoding_options_) {
+    options.push_back(opt.c_str());
+  }
+  this->select_encoding_.traits.set_options(options);
+
   this->cur_encoder_ = this->handler_->get_encoder(encoding, variant);
-  this->select_encoding_.state = this->cur_encoder_->get_id();
+  this->select_encoding_.publish_state(this->cur_encoder_->get_id());
   this->select_encoding_.add_on_state_callback(std::bind(&BleAdvController::refresh_encoder, this, std::placeholders::_1, std::placeholders::_2));
 }
 

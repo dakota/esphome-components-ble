@@ -29,7 +29,7 @@ public:
     this->set_name(this->ref_name_.c_str());
     this->set_entity_category(EntityCategory::ENTITY_CATEGORY_CONFIG);
     this->sub_init();
-    this->publish_state(this->state);
+    // Note: sub_init() handles state restoration and initial publish
   }
 
   // register to App and restore from config / saved data
@@ -116,6 +116,7 @@ protected:
   BleAdvEncoder * cur_encoder_{nullptr};
   BleAdvNumber number_duration_;
   BleAdvHandler * handler_{nullptr};
+  std::vector<std::string> encoding_options_; // Store encoding options to keep them alive
 
   class QueueItem {
   public:
