@@ -256,7 +256,7 @@ class BleAdvRegistry:
         if not cls.handler:
             hdl_id = ID("ble_adv_static_handler", type=BleAdvHandler)
             cls.handler = cg.new_Pvariable(hdl_id)
-            cg.add(cls.handler.set_component_source("ble_adv_handler"))
+            # Component source is now set automatically in ESPHome 2025.x
             cg.add(cg.App.register_component(cls.handler))
             for encoding, params in BLE_ADV_ENCODERS.items():
                 for variant, param_variant in params["variants"].items():
