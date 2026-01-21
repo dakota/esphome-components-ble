@@ -26,7 +26,6 @@ public:
   void init(const char * name, const StringRef & parent_name) {
     // Due to the use of sh... StringRef, we are forced to keep a ref on the built string...
     this->ref_name_ = std::string(parent_name) + " - " + std::string(name);
-    this->set_object_id(this->ref_name_.c_str());
     this->set_name(this->ref_name_.c_str());
     this->set_entity_category(EntityCategory::ENTITY_CATEGORY_CONFIG);
     this->sub_init();
