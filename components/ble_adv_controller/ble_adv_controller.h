@@ -10,6 +10,7 @@
 #include "esphome/components/select/select.h"
 #include "esphome/components/number/number.h"
 #include "ble_adv_handler.h"
+#include <array>
 #include <vector>
 #include <list>
 
@@ -103,6 +104,7 @@ public:
   bool enqueue(Command &cmd);
 
 protected:
+  std::string object_id_string_() const;
 
   uint32_t max_tx_duration_ = 3000;
   uint32_t seq_duration_ = 150;
