@@ -13,7 +13,7 @@
 
 namespace esphome {
 
-#ifdef USE_ESP32_BLE_CLIENT
+#if defined(USE_ESP32_BLE_CLIENT) && defined(USE_ESP32_BLE_DEVICE)
 namespace esp32_ble_tracker {
   class ESPBTDevice;
 }
@@ -216,7 +216,7 @@ public:
   bool identify_param(const BleAdvParam & param, bool ignore_ble_param);
 
   // Listener
-#ifdef USE_ESP32_BLE_CLIENT
+#if defined(USE_ESP32_BLE_CLIENT) && defined(USE_ESP32_BLE_DEVICE)
   void capture(const esp32_ble_tracker::ESPBTDevice & device, bool ignore_ble_param = true, uint16_t rem_time = 60);
 #endif
 

@@ -10,7 +10,6 @@
 #include "esphome/components/select/select.h"
 #include "esphome/components/number/number.h"
 #include "ble_adv_handler.h"
-#include <array>
 #include <vector>
 #include <list>
 
@@ -26,8 +25,8 @@ public:
   void init(const char * name, const StringRef & parent_name) {
     // Due to the use of sh... StringRef, we are forced to keep a ref on the built string...
     this->ref_name_ = std::string(parent_name) + " - " + std::string(name);
-    this->set_name(this->ref_name_.c_str());
-    this->set_entity_category(EntityCategory::ENTITY_CATEGORY_CONFIG);
+    static_cast<BaseEntity *>(this)->set_name(this->ref_name_.c_str());
+    static_cast<BaseEntity *>(this)->set_entity_category(EntityCategory::ENTITY_CATEGORY_CONFIG);
     this->sub_init();
     // Note: sub_init() handles state restoration and initial publish
   }
@@ -103,7 +102,7 @@ public:
   bool enqueue(Command &cmd);
 
 protected:
-  std::string object_id_string_() const;
+  std::string service_name_suffix_() const;
 
   uint32_t max_tx_duration_ = 3000;
   uint32_t seq_duration_ = 150;

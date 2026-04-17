@@ -152,7 +152,11 @@ bool BleAdvMultiEncoder::is_supported(const Command &cmd) {
 
 void BleAdvHandler::setup() {
 #ifdef USE_API
+#ifdef USE_API_CUSTOM_SERVICES
   register_service(&BleAdvHandler::on_raw_decode, "raw_decode", {"raw"});
+#else
+  ESP_LOGW(TAG, "Custom API services disabled; set api.custom_services: true to enable raw_decode");
+#endif
 #endif
 }
 
@@ -273,25 +277,15 @@ void BleAdvHandler::on_raw_decode(std::string raw) {
 }
 #endif
 
-#ifdef USE_ESP32_BLE_CLIENT
-/* Basic class inheriting esp32_ble_tracker::ESPBTDevice in order to access 
-    protected attribute 'scan_result_' containing raw advertisement
-*/
-class HackESPBTDevice: public esp32_ble_tracker::ESPBTDevice {
-public:
-  void get_raw_packet(BleAdvParam & param) const {
-    param.from_raw(this->scan_result_->ble_adv, this->scan_result_->adv_data_len);
-  }
-};
-
+#if defined(USE_ESP32_BLE_CLIENT) && defined(USE_ESP32_BLE_DEVICE)
 void BleAdvHandler::capture(const esp32_ble_tracker::ESPBTDevice & device, bool ignore_ble_param, uint16_t rem_time) {
   // Clean-up expired packets
   this->listen_packets_.remove_if( [&](BleAdvParam & p){ return p.duration_ < millis(); } );
 
   // Read raw advertised packets
+  const auto & scan_result = device.get_scan_result();
   BleAdvParam param;
-  const HackESPBTDevice * hack_device = reinterpret_cast< const HackESPBTDevice * >(&device);
-  hack_device->get_raw_packet(param);
+  param.from_raw(scan_result.ble_adv, scan_result.adv_data_len);
   if (!param.has_data()) return;
 
   // Check if not already received in the last 300s

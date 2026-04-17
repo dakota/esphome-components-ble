@@ -73,19 +73,21 @@ void BleAdvController::set_min_tx_duration(int tx_duration, int min, int max, in
   this->number_duration_.state = tx_duration;
 }
 
-std::string BleAdvController::object_id_string_() const {
-  std::array<char, OBJECT_ID_MAX_LEN> buf{};
-  size_t len = this->write_object_id_to(buf.data(), buf.size());
-  return std::string(buf.data(), len);
+std::string BleAdvController::service_name_suffix_() const {
+  return str_sanitize(str_snake_case(std::string(this->get_name())));
 }
 
 void BleAdvController::setup() {
 #ifdef USE_API
-  const auto obj_id = this->object_id_string_();
-  register_service(&BleAdvController::on_pair, "pair_" + obj_id);
-  register_service(&BleAdvController::on_unpair, "unpair_" + obj_id);
-  register_service(&BleAdvController::on_cmd, "cmd_" + obj_id, {"cmd", "arg0", "arg1", "arg2", "arg3"});
-  register_service(&BleAdvController::on_raw_inject, "inject_raw_" + obj_id, {"raw"});
+#ifdef USE_API_CUSTOM_SERVICES
+  const auto suffix = this->service_name_suffix_();
+  register_service(&BleAdvController::on_pair, "pair_" + suffix);
+  register_service(&BleAdvController::on_unpair, "unpair_" + suffix);
+  register_service(&BleAdvController::on_cmd, "cmd_" + suffix, {"cmd", "arg0", "arg1", "arg2", "arg3"});
+  register_service(&BleAdvController::on_raw_inject, "inject_raw_" + suffix, {"raw"});
+#else
+  ESP_LOGW(TAG, "Custom API services disabled; set api.custom_services: true to enable BLE controller services");
+#endif
 #endif
   if (this->is_show_config()) {
     this->select_encoding_.init("Encoding", this->get_name());
