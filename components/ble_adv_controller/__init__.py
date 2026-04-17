@@ -257,7 +257,7 @@ class BleAdvRegistry:
             hdl_id = ID("ble_adv_static_handler", type=BleAdvHandler)
             cls.handler = cg.new_Pvariable(hdl_id)
             # Component source is now set automatically in ESPHome 2025.x
-            cg.add(cg.App.register_component(cls.handler))
+            cg.add(cg.App.register_component_(cls.handler))
             for encoding, params in BLE_ADV_ENCODERS.items():
                 for variant, param_variant in params["variants"].items():
                     if "class" in param_variant:
@@ -271,7 +271,6 @@ class BleAdvRegistry:
 async def to_code(config):
     hdl = BleAdvRegistry.get()
     var = cg.new_Pvariable(config[CONF_ID])
-    cg.add(var.set_setup_priority(300)) # start after Bluetooth
     await cg.register_component(var, config)
     await setup_entity(var, config, "ble_adv_controller")
     cg.add(var.set_handler(hdl))

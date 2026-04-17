@@ -25,8 +25,10 @@ public:
   void init(const char * name, const StringRef & parent_name) {
     // Due to the use of sh... StringRef, we are forced to keep a ref on the built string...
     this->ref_name_ = std::string(parent_name) + " - " + std::string(name);
-    static_cast<BaseEntity *>(this)->set_name(this->ref_name_.c_str());
-    static_cast<BaseEntity *>(this)->set_entity_category(EntityCategory::ENTITY_CATEGORY_CONFIG);
+    uint32_t entity_fields = static_cast<uint32_t>(EntityCategory::ENTITY_CATEGORY_CONFIG)
+                             << ENTITY_FIELD_ENTITY_CATEGORY_SHIFT;
+    this->configure_entity_(this->ref_name_.c_str(), fnv1_hash_object_id(this->ref_name_.c_str(), this->ref_name_.size()),
+                            entity_fields);
     this->sub_init();
     // Note: sub_init() handles state restoration and initial publish
   }
@@ -73,6 +75,7 @@ public:
   void setup() override;
   void loop() override;
   virtual void dump_config() override;
+  float get_setup_priority() const override { return 300.0f; }
   
   void set_min_tx_duration(int tx_duration, int min, int max, int step);
   uint32_t get_min_tx_duration() { return (uint32_t)this->number_duration_.state; }
