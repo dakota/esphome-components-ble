@@ -54,7 +54,10 @@ void BleAdvController::set_encoding_and_variant(const std::string & encoding, co
   this->select_encoding_.traits.set_options(options);
 
   this->cur_encoder_ = this->handler_->get_encoder(encoding, variant);
-  this->select_encoding_.publish_state(this->cur_encoder_->get_id());
+  if (this->cur_encoder_ == nullptr && !this->encoding_options_.empty()) {
+    ESP_LOGW(TAG, "Falling back to first encoder option '%s'", this->encoding_options_[0].c_str());
+    this->cur_encoder_ = this->handler_->get_encoder(this->encoding_options_[0]);
+  }
   this->select_encoding_.add_on_state_callback([this](size_t index) { this->refresh_encoder(index); });
 }
 
@@ -63,7 +66,12 @@ void BleAdvController::refresh_encoder(size_t index) {
     ESP_LOGW(TAG, "Ignoring encoder change: index %u out of range", static_cast<unsigned>(index));
     return;
   }
-  this->cur_encoder_ = this->handler_->get_encoder(this->encoding_options_[index]);
+  auto *encoder = this->handler_->get_encoder(this->encoding_options_[index]);
+  if (encoder == nullptr) {
+    ESP_LOGE(TAG, "Unable to switch encoder to '%s'", this->encoding_options_[index].c_str());
+    return;
+  }
+  this->cur_encoder_ = encoder;
 }
 
 void BleAdvController::set_min_tx_duration(int tx_duration, int min, int max, int step) {
@@ -92,6 +100,9 @@ void BleAdvController::setup() {
   if (this->is_show_config()) {
     this->select_encoding_.init("Encoding", this->get_name());
     this->number_duration_.init("Duration", this->get_name());
+    if (this->cur_encoder_ != nullptr && this->select_encoding_.has_option(this->cur_encoder_->get_id())) {
+      this->select_encoding_.publish_state(this->cur_encoder_->get_id());
+    }
   }
 }
 
@@ -134,6 +145,10 @@ void BleAdvController::on_raw_inject(std::string raw) {
 #endif
 
 bool BleAdvController::enqueue(Command &cmd) {
+  if (this->cur_encoder_ == nullptr) {
+    ESP_LOGE(TAG, "No encoder available for command %d", cmd.main_cmd_);
+    return false;
+  }
   if (!this->cur_encoder_->is_supported(cmd)) {
     ESP_LOGW(TAG, "Unsupported command received: %d. Aborted.", cmd.main_cmd_);
     return false;
