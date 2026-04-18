@@ -23,12 +23,14 @@ class BleAdvDynConfig: public BaseEntity
 {
 public:
   void init(const char * name, const StringRef & parent_name) {
-    // Due to the use of sh... StringRef, we are forced to keep a ref on the built string...
+    // StringRef from codegen is not retained; keep a stable std::string for the entity name.
     this->ref_name_ = std::string(parent_name) + " - " + std::string(name);
+    const uint32_t hash = fnv1_hash_object_id(this->ref_name_.c_str(), this->ref_name_.size());
+    // ESPHome 2026.3+ configures entities via protected configure_entity_() from codegen; runtime
+    // dynamic names use the same packed entity_fields layout (see entity_base.h ENTITY_FIELD_*_SHIFT).
     uint32_t entity_fields = static_cast<uint32_t>(EntityCategory::ENTITY_CATEGORY_CONFIG)
                              << ENTITY_FIELD_ENTITY_CATEGORY_SHIFT;
-    this->configure_entity_(this->ref_name_.c_str(), fnv1_hash_object_id(this->ref_name_.c_str(), this->ref_name_.size()),
-                            entity_fields);
+    this->configure_entity_(this->ref_name_.c_str(), hash, entity_fields);
     this->sub_init();
     // Note: sub_init() handles state restoration and initial publish
   }
@@ -87,7 +89,12 @@ public:
   void set_encoding_and_variant(const std::string & encoding, const std::string & variant);
   void set_reversed(bool reversed) { this->reversed_ = reversed; }
   bool is_reversed() const { return this->reversed_; }
-  bool is_supported(const Command &cmd) { return this->cur_encoder_->is_supported(cmd); }
+  bool is_supported(const Command &cmd) {
+    if (this->cur_encoder_ == nullptr) {
+      return false;
+    }
+    return this->cur_encoder_->is_supported(cmd);
+  }
   void set_show_config(bool show_config) { this->show_config_ = show_config; }
   bool is_show_config() { return this->show_config_; }
 
@@ -99,6 +106,7 @@ public:
   void on_pair();
   void on_unpair();
   void on_cmd(float cmd, float arg0, float arg1, float arg2, float arg3);
+  void on_cmd_int(float cmd, float arg0, float arg1, float arg2, float arg3);
   void on_raw_inject(std::string raw);
 #endif
 

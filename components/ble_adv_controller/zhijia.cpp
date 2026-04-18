@@ -83,6 +83,22 @@ std::vector< Command > ZhijiaEncoderV0::translate(const Command & cmd, const Con
   return cmds;
 }
 
+bool ZhijiaEncoderV0::is_supported(const Command &cmd) {
+  switch (cmd.main_cmd_) {
+    case CommandType::PAIR:
+    case CommandType::UNPAIR:
+    case CommandType::LIGHT_ON:
+    case CommandType::LIGHT_OFF:
+    case CommandType::LIGHT_DIM:
+    case CommandType::LIGHT_CCT:
+    case CommandType::LIGHT_SEC_ON:
+    case CommandType::LIGHT_SEC_OFF:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool ZhijiaEncoderV0::decode(uint8_t* buf, Command &cmd, ControllerParam_t & cont) {
   this->whiten(buf, this->len_, 0x37);
   this->whiten(buf, this->len_, 0x7F);
@@ -179,6 +195,23 @@ std::vector< Command > ZhijiaEncoderV1::translate(const Command & cmd, const Con
     cmds.emplace_back(cmd_real);
   }
   return cmds;
+}
+
+bool ZhijiaEncoderV1::is_supported(const Command &cmd) {
+  switch (cmd.main_cmd_) {
+    case CommandType::PAIR:
+    case CommandType::UNPAIR:
+    case CommandType::LIGHT_ON:
+    case CommandType::LIGHT_OFF:
+    case CommandType::LIGHT_WCOLOR:
+    case CommandType::LIGHT_DIM:
+    case CommandType::LIGHT_CCT:
+    case CommandType::LIGHT_SEC_ON:
+    case CommandType::LIGHT_SEC_OFF:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool ZhijiaEncoderV1::decode(uint8_t* buf, Command &cmd, ControllerParam_t & cont) {
@@ -287,6 +320,20 @@ std::vector< Command > ZhijiaEncoderV2::translate(const Command & cmd, const Con
     cmds.emplace_back(cmd_real);
   }
   return cmds;
+}
+
+bool ZhijiaEncoderV2::is_supported(const Command &cmd) {
+  if (ZhijiaEncoderV1::is_supported(cmd)) {
+    return true;
+  }
+  switch (cmd.main_cmd_) {
+    case CommandType::FAN_ON:
+    case CommandType::FAN_OFF:
+    case CommandType::FAN_SPEED:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool ZhijiaEncoderV2::decode(uint8_t* buf, Command &cmd, ControllerParam_t & cont) {

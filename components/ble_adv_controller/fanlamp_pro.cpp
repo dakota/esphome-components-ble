@@ -8,46 +8,45 @@
 namespace esphome {
 namespace bleadvcontroller {
 
+namespace {
+
+/** Protocol command byte for a logical CommandType (0 = unsupported). Shared by translate and is_supported. */
+uint8_t fanlamp_map_main_cmd(CommandType main_m) {
+  switch (main_m) {
+    case CommandType::PAIR:
+      return 0x28;
+    case CommandType::UNPAIR:
+      return 0x45;
+    case CommandType::LIGHT_ON:
+      return 0x10;
+    case CommandType::LIGHT_OFF:
+      return 0x11;
+    case CommandType::LIGHT_WCOLOR:
+      return 0x21;
+    case CommandType::LIGHT_SEC_ON:
+      return 0x12;
+    case CommandType::LIGHT_SEC_OFF:
+      return 0x13;
+    case CommandType::FAN_ONOFF_SPEED:
+      return 0x31;
+    case CommandType::FAN_DIR:
+      return 0x15;
+    case CommandType::FAN_OSC:
+      return 0x16;
+    default:
+      return 0;
+  }
+}
+
+}  // namespace
+
+bool FanLampEncoder::is_supported(const Command &cmd) { return fanlamp_map_main_cmd(cmd.main_cmd_) != 0; }
+
 std::vector< Command > FanLampEncoder::translate(const Command & cmd, const ControllerParam_t & cont) {
   Command cmd_real(cmd.main_cmd_);
-  switch(cmd.main_cmd_)
-  {
-    case CommandType::PAIR:
-      cmd_real.cmd_ = 0x28;
-      break;
-    case CommandType::UNPAIR:
-      cmd_real.cmd_ = 0x45;
-      break;
-    case CommandType::LIGHT_ON:
-      cmd_real.cmd_ = 0x10;
-      break;
-    case CommandType::LIGHT_OFF:
-      cmd_real.cmd_ = 0x11;
-      break;
-    case CommandType::LIGHT_WCOLOR:
-      cmd_real.cmd_ = 0x21;
-      break;
-    case CommandType::LIGHT_SEC_ON:
-      cmd_real.cmd_ = 0x12;
-      break;
-    case CommandType::LIGHT_SEC_OFF:
-      cmd_real.cmd_ = 0x13;
-      break;
-    case CommandType::FAN_ONOFF_SPEED:
-      cmd_real.cmd_ = 0x31;
-      break;
-    case CommandType::FAN_DIR:
-      cmd_real.cmd_ = 0x15;
-      break;
-    case CommandType::FAN_OSC:
-      cmd_real.cmd_ = 0x16;
-      break;
-    case CommandType::NOCMD:
-    default:
-      break;
-  }
+  cmd_real.cmd_ = fanlamp_map_main_cmd(cmd.main_cmd_);
   std::vector< Command > cmds;
-  if(cmd_real.cmd_ != 0x00) {
+  if (cmd_real.cmd_ != 0x00) {
     cmds.emplace_back(cmd_real);
   }
   return cmds;

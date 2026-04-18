@@ -78,6 +78,8 @@ ble_adv_controller:
     encoding: fanlamp_pro
 ```
 
+**Wi‑Fi note:** On ESP32, BLE scanning competes with Wi‑Fi on the same radio. The example above uses a tight `interval` / `window` to capture traffic; that is fine for short debugging sessions. For a device that must stay reachable over Wi‑Fi (Home Assistant API, OTA), use **less aggressive** scan parameters (e.g. larger `interval`, smaller duty cycle) or disable `esp32_ble_tracker` when you are not capturing. The handler keeps a bounded cache of recent packets for deduplication.
+
 This will generate DEBUG logs such as those ones each time a raw advertising message is received:
 ```
 [17:37:52][D][ble_adv_handler:297]: raw - 02.01.02.03.03.27.18.15.16.27.18.A8.01.51.3F.91.A2.00.E2.DC.38.AD.F0.64.03.07.00.00.00 (29)
@@ -166,14 +168,23 @@ You will see the result of the decoding in the logs of the application, as such:
 * the result of the comparison between what was injected and what was re encoded, to be sure the encoder would work OK! This comparison ignores the irrelevant differences in AD_Flag section (02.01.01 / 02.01.19).
 
 # Custom Command Service
-if you are using 'api' component to communicate with HA, for each ble_adv_controller a HA service is available:
-* name of the service:
+If you are using the `api` component to communicate with HA, for each `ble_adv_controller` two equivalent Home Assistant services are registered (requires `api.custom_services: true`):
+
+**Preferred — values clamped to byte range (0–255):**
+```
+esphome: <device_name>_cmd_int_<ble_adv_controller_id>
+```
+Parameters: `cmd`, `arg0`, `arg1`, `arg2`, `arg3` (numeric; the ESPHome API uses floats). Each value is clamped to 0–255 before encoding. Use whole numbers (e.g. `16` for hex `0x10`).
+
+**Legacy — raw float-to-byte cast (unchanged for backward compatibility):**
 ```
 esphome: <device_name>_cmd_<ble_adv_controller_id>
 ```
+Parameters: `cmd`, `arg0`, … as floats; they are cast to bytes with `(uint8_t)` (no clamping). Prefer `cmd_int_*` for normal use.
+
 ![screenshot](../../doc/images/BleAdvService.jpg)
 
-It uses as a bases the ble_adv_controller, and then its associated parameters and features (encoding, variant, identifier, transaction count). It allows to specify directly command parameters (cmd, arg0..3) skipping the 'Convert' part and processing the encoding from there (add controller params, Signing, CRC, Whitening and emitting command).
+Both services use the same `ble_adv_controller` state (encoding, variant, identifier, transaction count). They pass raw command bytes (`cmd`, `arg0`..`arg3`) into the encoder (signing, CRC, whitening, advertising) without going through entity-level command translation.
 
 ## Known commands
 For info here are the "known" commands already extracted from code and their corresponding command id and parameter values when known, for each main encoding sets:
@@ -213,7 +224,7 @@ For info here are the "known" commands already extracted from code and their cor
 | fan_dir      | N/A         | N/A         | N/A         | 0x15, arg0=0..1   | 0x15, arg1=0..1   |
 | fan_osc      | N/A         | N/A         | N/A         | N/A               | 0x16, arg1=0..1   |
 
-NOTE: the cmd code given are hexa codes, **you have to translate them into decimal for use in HA service**, use Windows Calculator in programmer mode.
+NOTE: tables below list command codes in **hex**. For `cmd_int_*`, pass the **decimal** value of each byte (e.g. hex `0x10` → decimal `16`). For legacy `cmd_*` floats, the same numeric values work but `cmd_int_*` avoids ambiguity.
 
 ## Guessing commands
 Well one can try all options and values... Or try to read the decompiled software !

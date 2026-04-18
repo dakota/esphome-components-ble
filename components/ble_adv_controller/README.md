@@ -14,6 +14,7 @@ This component is an [ESPHome external component](https://esphome.io/components/
 * A basic knowledge of [ESPHome](https://esphome.io/). A good entry point is [here](https://esphome.io/guides/getting_started_hassio.html).
 * The [ESPHome integration](https://www.home-assistant.io/integrations/esphome/) in Home Assistant
 * An [Espressif](https://www.espressif.com/) microcontroller supporting Bluetooth v4, such as any [ESP32](https://www.espressif.com/en/products/socs/esp32) based model. You can find some for a few dollars on any online marketplace searching for ESP32.
+* For [custom API services](https://esphome.io/components/api.html) (`pair_*`, `cmd_*`, `cmd_int_*`, `inject_raw_*`, device `raw_decode`), add `api:` with **`custom_services: true`** to your YAML. Without it, services are disabled and a warning is logged at runtime.
 
 When the setup will be completed you will have a new ESPHome device available in Home assistant, exposing standard entities such as:
 * Light(s) entity allowing the control of Color Temperature and Brightness
@@ -28,6 +29,10 @@ The technical solution implemented by manufacturers to control those devices is 
   * If the value is too high, each command is queued one after the other and then sending commands at a high rate will make delay more and more the commands.
   * The use of ESPHome light `transitions` is not recommended (and deactivated by default) as it generates high command rate. A mitigation has been implemented in order to remove commands of the same type from the processing queue when a new one is received, it seriously improves the behavior of the component but it is still not perfect.
 * Some commands are the same for ON and OFF, working as a Toggle in fact. Sending high rate commands will cause the mix of ON and OFF commands and result in flickering and desynchronization of states.
+
+### ESP32: Wi‑Fi and BLE coexistence
+
+On the classic ESP32, Wi‑Fi and Bluetooth share one 2.4 GHz radio. Using `esp32_ble`, this component (BLE advertising), and especially **`esp32_ble_tracker` with aggressive scan settings** (very short `interval` / `window`, i.e. near-continuous scanning) can leave little airtime for Wi‑Fi. The device may still show as Wi‑Fi connected in the log while TCP/IP (API, OTA) works poorly or not at all. For normal operation, use **relaxed** `esp32_ble_tracker.scan_parameters`, or turn the tracker off when you are not capturing traffic for pairing or debugging. Details: [Capturing Advertising messages](CUSTOM.md#capturing-advertising-messages).
 
 ## How to try it
 
@@ -208,8 +213,10 @@ It could be painful to find the correct variant or the correct duration by each 
 
 ![choice encoding](../../doc/images/Choice_encoding.jpg)
 
+* `Encoding` (per-controller select) lists each concrete variant plus one aggregate entry such as **`fanlamp_pro - All`** or **`zhijia - All`**. That entry uses an internal multi-variant encoder: pairing and commands are emitted across every registered variant for that app (similar to some phone apps). Use it only when you need that behavior (e.g. initial pairing); for normal operation pick a single variant (`v1`, `v2`, …) to avoid broadcasting duplicate packets.
+
 * `Variant` is customizable in the encoding selection part, the idea is to do the following:
-  * Start with the 'Zhi Jia - All' or 'FanLamp -All' depending on the corresponding phone app, and perform the Pairing with this: the component will send the pairing message with all variants, as the phone app is doing. If you need the pairing to be kept emited for a long time, increase the 'max_duration' option.
+  * Start with the 'Zhi Jia - All' or 'FanLamp Pro - All' (or the matching ` - All` line for your `encoding`) and perform the Pairing with this: the component will send the pairing message with all variants, as the phone app is doing. If you need the pairing to be kept emited for a long time, increase the 'max_duration' option.
   * Once done you can test to switch ON / OFF the main light to check the pairing went OK
   * Then you can try the variants one by one and switch ON / OFF to find the exact variant used by your lamp
 

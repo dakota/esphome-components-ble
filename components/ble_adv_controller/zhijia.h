@@ -21,7 +21,8 @@ class ZhijiaEncoderV0: public ZhijiaEncoder
 public:
   ZhijiaEncoderV0(const std::string & encoding, const std::string & variant): 
           ZhijiaEncoder(encoding, variant) { { this->len_ = sizeof(data_map_t); }}
-  
+  bool is_supported(const Command &cmd) override;
+
 protected:
   static constexpr size_t UUID_LEN = 2;
   static constexpr size_t ADDR_LEN = 3;
@@ -42,7 +43,8 @@ class ZhijiaEncoderV1: public ZhijiaEncoder
 public:
   ZhijiaEncoderV1(const std::string & encoding, const std::string & variant): 
           ZhijiaEncoder(encoding, variant) { this->len_ = sizeof(data_map_t); }
-  
+  bool is_supported(const Command &cmd) override;
+
 protected:
   static constexpr size_t UUID_LEN = 3;
   static constexpr size_t ADDR_LEN = 4;
@@ -63,7 +65,8 @@ class ZhijiaEncoderV2: public ZhijiaEncoderV1
 public:
   ZhijiaEncoderV2(const std::string & encoding, const std::string & variant): 
           ZhijiaEncoderV1(encoding, variant) { this->len_ = sizeof(data_map_t); }
-  
+  bool is_supported(const Command &cmd) override;
+
 protected:
   static constexpr size_t UUID_LEN = 3;
   static constexpr size_t ADDR_LEN = 3;

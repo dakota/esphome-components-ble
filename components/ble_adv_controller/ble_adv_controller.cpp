@@ -8,6 +8,9 @@ namespace bleadvcontroller {
 
 static const char *TAG = "ble_adv_controller";
 
+// Transaction counter is 8-bit; reset before it stops incrementing (protocol-specific saturation around 120).
+static constexpr uint8_t TX_COUNT_WRAP_THRESHOLD = 120;
+
 void BleAdvSelect::control(const std::string &value) {
   this->publish_state(value);
   uint32_t hash_value = fnv1_hash(value);
@@ -92,6 +95,8 @@ void BleAdvController::setup() {
   register_service(&BleAdvController::on_pair, "pair_" + suffix);
   register_service(&BleAdvController::on_unpair, "unpair_" + suffix);
   register_service(&BleAdvController::on_cmd, "cmd_" + suffix, {"cmd", "arg0", "arg1", "arg2", "arg3"});
+  register_service(&BleAdvController::on_cmd_int, "cmd_int_" + suffix,
+                   {"cmd", "arg0", "arg1", "arg2", "arg3"});
   register_service(&BleAdvController::on_raw_inject, "inject_raw_" + suffix, {"raw"});
 #else
   ESP_LOGW(TAG, "Custom API services disabled; set api.custom_services: true to enable BLE controller services");
@@ -137,6 +142,26 @@ void BleAdvController::on_cmd(float cmd_type, float arg0, float arg1, float arg2
   this->enqueue(cmd);
 }
 
+void BleAdvController::on_cmd_int(float cmd_type, float arg0, float arg1, float arg2, float arg3) {
+  // Service args use float (ESPHome API template); clamp to byte range for the protocol.
+  auto clamp_byte = [](float v) -> uint8_t {
+    if (v < 0.0f) {
+      return 0;
+    }
+    if (v > 255.0f) {
+      return 255;
+    }
+    return static_cast<uint8_t>(v);
+  };
+  Command cmd(CommandType::CUSTOM);
+  cmd.cmd_ = clamp_byte(cmd_type);
+  cmd.args_[0] = clamp_byte(arg0);
+  cmd.args_[1] = clamp_byte(arg1);
+  cmd.args_[2] = clamp_byte(arg2);
+  cmd.args_[3] = clamp_byte(arg3);
+  this->enqueue(cmd);
+}
+
 void BleAdvController::on_raw_inject(std::string raw) {
   this->commands_.emplace_back(CommandType::CUSTOM);
   this->commands_.back().params_.emplace_back();
@@ -149,28 +174,34 @@ bool BleAdvController::enqueue(Command &cmd) {
     ESP_LOGE(TAG, "No encoder available for command %d", cmd.main_cmd_);
     return false;
   }
-  if (!this->cur_encoder_->is_supported(cmd)) {
-    ESP_LOGW(TAG, "Unsupported command received: %d. Aborted.", cmd.main_cmd_);
-    return false;
-  }
-
-  // Reset tx count if near the limit
-  if (this->params_.tx_count_ > 120) {
+  // Reset tx count if near the limit (protocol uses a 1-byte counter; keep below rollover).
+  if (this->params_.tx_count_ > TX_COUNT_WRAP_THRESHOLD) {
     this->params_.tx_count_ = 0;
   }
 
-  // Remove any previous command of the same type in the queue, if not used for several purposes
+  // Remove any previous command of the same type in the queue (single pass; match on main_cmd_)
   if (cmd.main_cmd_ != CommandType::CUSTOM) {
-    uint8_t nb_rm = std::count_if(this->commands_.begin(), this->commands_.end(), [&](QueueItem& q){ return q.cmd_type_ == cmd.cmd_; });
-    if (nb_rm) {
-      ESP_LOGD(TAG, "Removing %d previous pending commands", nb_rm);
-      this->commands_.remove_if( [&](QueueItem& q){ return q.cmd_type_ == cmd.cmd_; } );
+    size_t removed = 0;
+    this->commands_.remove_if([&](QueueItem &q) {
+      if (q.cmd_type_ == cmd.main_cmd_) {
+        removed++;
+        return true;
+      }
+      return false;
+    });
+    if (removed != 0) {
+      ESP_LOGD(TAG, "Removing %u previous pending commands", static_cast<unsigned>(removed));
     }
   }
 
-  // enqueue the new command and encode the buffer(s)
+  // Enqueue and encode once (avoid duplicate translate() from a separate is_supported check)
   this->commands_.emplace_back(cmd.main_cmd_);
   this->cur_encoder_->encode(this->commands_.back().params_, cmd, this->params_);
+  if (this->commands_.back().params_.empty()) {
+    this->commands_.pop_back();
+    ESP_LOGW(TAG, "Unsupported command received: %d. Aborted.", static_cast<int>(cmd.main_cmd_));
+    return false;
+  }
   
   // setup seq duration for each packet
   bool use_seq_duration = (this->seq_duration_ > 0) && (this->seq_duration_ < this->get_min_tx_duration());

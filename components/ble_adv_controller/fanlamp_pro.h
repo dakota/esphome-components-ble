@@ -11,6 +11,8 @@ public:
   FanLampEncoder(const std::string & encoding, const std::string & variant, const std::vector<uint8_t> & prefix):
          BleAdvEncoder(encoding, variant), prefix_(prefix) {}
 
+  bool is_supported(const Command &cmd) override;
+
 protected:
   virtual std::vector< Command > translate(const Command & cmd, const ControllerParam_t & cont) override;
 

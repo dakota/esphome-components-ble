@@ -11,6 +11,9 @@ namespace bleadvcontroller {
 
 static const char *TAG = "ble_adv_handler";
 
+// Bound RAM when BLE tracker calls capture() at high rate (dedup cache per ADV payload).
+static constexpr size_t BLE_ADV_LISTEN_PACKETS_CAP = 32;
+
 void BleAdvParam::from_raw(const uint8_t * buf, size_t len) {
   // Copy the raw data as is, limiting to the max size of the buffer
   this->len_ = std::min(MAX_PACKET_LEN, len);
@@ -35,19 +38,45 @@ void BleAdvParam::from_raw(const uint8_t * buf, size_t len) {
 
 void BleAdvParam::from_hex_string(std::string & raw) {
   // Clean-up input string
-  raw = raw.substr(0, raw.find('('));
-  raw.erase(std::remove_if(raw.begin(), raw.end(), [&](char & c) { return c == '.' || c == ' '; }), raw.end());
-  if (raw.substr(0,2) == "0x") {
+  const auto paren = raw.find('(');
+  if (paren != std::string::npos) {
+    raw = raw.substr(0, paren);
+  }
+  raw.erase(std::remove_if(raw.begin(), raw.end(), [&](char &c) { return c == '.' || c == ' '; }), raw.end());
+  if (raw.size() >= 2 && raw[0] == '0' && (raw[1] == 'x' || raw[1] == 'X')) {
     raw = raw.substr(2);
   }
 
-  // convert to integers
+  auto hex_nibble = [](char c) -> int {
+    if (c >= '0' && c <= '9')
+      return c - '0';
+    if (c >= 'a' && c <= 'f')
+      return 10 + c - 'a';
+    if (c >= 'A' && c <= 'F')
+      return 10 + c - 'A';
+    return -1;
+  };
+
   uint8_t raw_int[MAX_PACKET_LEN]{0};
-  uint8_t len = std::min(MAX_PACKET_LEN, raw.size()/2);
-  for (uint8_t i=0; i < len; ++i) {
-    raw_int[i] = stoi(raw.substr(2*i, 2), 0, 16);
+  size_t out_len = 0;
+  size_t i = 0;
+  while (i + 1 < raw.size() && out_len < MAX_PACKET_LEN) {
+    int hi = hex_nibble(raw[i]);
+    int lo = hex_nibble(raw[i + 1]);
+    if (hi < 0 || lo < 0) {
+      ESP_LOGW(TAG, "from_hex_string: invalid hex at offset %u", static_cast<unsigned>(i));
+      break;
+    }
+    raw_int[out_len++] = static_cast<uint8_t>((hi << 4) | lo);
+    i += 2;
   }
-  this->from_raw(raw_int, len);
+  if (raw.size() % 2 != 0 && !raw.empty()) {
+    ESP_LOGW(TAG, "from_hex_string: ignored trailing nibble (odd length)");
+  }
+  if (out_len == 0 && !raw.empty()) {
+    ESP_LOGW(TAG, "from_hex_string: no valid bytes parsed");
+  }
+  this->from_raw(raw_int, out_len);
 }
 
 void BleAdvParam::init_with_ble_param(uint8_t ad_flag, uint8_t data_type) {
@@ -196,7 +225,7 @@ BleAdvEncoder * BleAdvHandler::get_encoder(const std::string & encoding, const s
 
 std::vector<std::string> BleAdvHandler::get_ids(const std::string & encoding) {
   std::vector<std::string> ids;
-  for(auto & encoder : this->encoders_) {
+  for (auto &encoder : this->encoders_) {
     if (encoder->is_encoding(encoding)) {
       ids.push_back(encoder->get_id());
     }
@@ -207,11 +236,11 @@ std::vector<std::string> BleAdvHandler::get_ids(const std::string & encoding) {
 uint16_t BleAdvHandler::add_to_advertiser(std::vector< BleAdvParam > & params) {
   uint32_t msg_id = ++this->id_count;
   for (auto & param : params) {
+    ESP_LOGD(TAG, "request start advertising - %ld: %s", msg_id,
+             esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
     this->packets_.emplace_back(BleAdvProcess(msg_id, std::move(param)));
-    ESP_LOGD(TAG, "request start advertising - %ld: %s", msg_id, 
-                esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
   }
-  params.clear(); // As we moved the content, just to be sure no caller will re use it
+  params.clear();  // moved-from; clear so caller cannot reuse
   return this->id_count;
 }
 
@@ -244,26 +273,29 @@ bool BleAdvHandler::identify_param(const BleAdvParam & param, bool ignore_ble_pa
       if (cont.index_ != 0) {
         config_str += "\n    index: %d";
       }
-      ESP_LOGI(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_, cont.index_);
-      
-      // Re encoding with the same parameters to check if it gives the same output
+      if (cont.index_ != 0) {
+        ESP_LOGV(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_,
+                 cont.index_);
+      } else {
+        ESP_LOGV(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_);
+      }
+
       std::vector< BleAdvParam > params;
-      cont.tx_count_--; // as the encoder will increase it automatically
-      if(cmd.cmd_ == 0x28) {
-        // Force recomputation of Args by translate function for PAIR command, as part of encoding
+      cont.tx_count_--;
+      if (cmd.cmd_ == 0x28) {
         cmd.main_cmd_ = CommandType::PAIR;
       }
       encoder->encode(params, cmd, cont);
       BleAdvParam & fparam = params.back();
-      ESP_LOGD(TAG, "enc - %s", esphome::format_hex_pretty(fparam.get_full_buf(), fparam.get_full_len()).c_str());
+      ESP_LOGV(TAG, "enc - %s", esphome::format_hex_pretty(fparam.get_full_buf(), fparam.get_full_len()).c_str());
       if (std::equal(param.get_const_data_buf(), param.get_const_data_buf() + param.get_data_len(), fparam.get_data_buf())) {
-        ESP_LOGI(TAG, "Decoded / Re-encoded with NO DIFF");
+        ESP_LOGV(TAG, "Decoded / Re-encoded with NO DIFF");
       } else {
         ESP_LOGE(TAG, "DIFF after Decode / Re-encode");
       }
 
       return true;
-    } 
+    }
   }
   return false;
 }
@@ -294,6 +326,9 @@ void BleAdvHandler::capture(const esp32_ble_tracker::ESPBTDevice & device, bool 
     ESP_LOGD(TAG, "raw - %s", esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
     param.duration_ = millis() + (uint32_t)rem_time * 1000;
     this->identify_param(param, ignore_ble_param);
+    while (this->listen_packets_.size() >= BLE_ADV_LISTEN_PACKETS_CAP) {
+      this->listen_packets_.pop_front();
+    }
     this->listen_packets_.emplace_back(std::move(param));
   }
 }
